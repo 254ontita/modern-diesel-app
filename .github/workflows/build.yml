@@ -1,0 +1,55 @@
+name: Build Unsigned iOS IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Run Expo Prebuild for iOS
+        env:
+          CI: "1"
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Build Unsigned iOS Archive
+        run: |
+          WORKSPACE=$(ls -d ios/*.xcworkspace | head -n 1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          echo "Building Workspace: $WORKSPACE with Scheme: $SCHEME"
+          xcodebuild archive \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath "$PWD/build/App.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            EXPANDED_CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+      - name: Package Unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/App.xcarchive/Products/Applications/*.app Payload/
+          zip -r ModernDiesel-Unsigned.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ModernDiesel-iOS-IPA
+          path: ModernDiesel-Unsigned.ipa
